@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Transport Vocabulary Game — Practice Mode</title>
+
+  <!-- Tailwind (solo para tipografía base) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    :root {
+      --bg-start: #12061f;
+      --bg-mid: #3d0a6b;
+      --bg-end: #7a22ff;
+      --text: #f2e9ff;
+      --glass-border: rgba(255,255,255,0.25);
+      --ease: cubic-bezier(.22,.61,.36,1);
+    }
+
+    html, body { height: 100%; }
+    body {
+      margin: 0; padding: 0;
+      font-family: "Inter","Segoe UI",sans-serif;
+      color: var(--text);
+      overflow: hidden;
+      background: radial-gradient(1200px 800px at 20% 10%, rgba(142,97,255,.18), transparent 60%),
+                  radial-gradient(1000px 900px at 85% 80%, rgba(255,143,240,.12), transparent 55%),
+                  linear-gradient(135deg, var(--bg-start), var(--bg-mid) 55%, var(--bg-end));
+      background-attachment: fixed;
+      animation: bgShift 18s infinite alternate ease-in-out;
+    }
+    @keyframes bgShift { from {filter:hue-rotate(0);} to {filter:hue-rotate(-10deg);} }
+
+    .game-container { height: 100%; display: flex; flex-direction: column; align-items:center; justify-content:center; gap:12px; }
+
+    h1 {
+      font-weight: 900;
+      background: linear-gradient(180deg,#fff,#dcc7ff 45%,#b78dff 80%);
+      -webkit-background-clip: text;
+      color: transparent;
+      text-shadow: 0 8px 40px rgba(146,92,255,.45);
+      font-size: clamp(28px,5vw,46px);
+    }
+
+    .instructions { font-weight:700; opacity:.85; }
+
+    .choice-labels { display:flex; justify-content:space-between; width:100%; max-width:450px; }
+    .choice-label {
+      padding:12px 22px; border-radius:18px;
+      background: linear-gradient(180deg, rgba(255,255,255,.18), rgba(255,255,255,.06));
+      border:1px solid var(--glass-border);
+      backdrop-filter: blur(10px);
+      opacity:.6; transition:.25s var(--ease);
+      font-weight:900;
+    }
+    .choice-label.highlight { opacity:1; transform:scale(1.05); }
+
+    .card-stack { position:relative; width:min(90vw,350px); height:min(80vh,440px); perspective:1000px; }
+
+    .transport-card {
+      position:absolute; inset:0;
+      display:flex; flex-direction:column; align-items:center; justify-content:center;
+      border-radius:25px; padding:30px;
+      background: linear-gradient(160deg, rgba(255,255,255,.20), rgba(255,255,255,.08));
+      border:1.2px solid var(--glass-border);
+      backdrop-filter: blur(25px);
+      box-shadow:0 40px 80px rgba(77,22,138,.45);
+      color:var(--text);
+      transition: transform .4s var(--ease), opacity .3s var(--ease);
+    }
+    .transport-icon { font-size:120px; margin-bottom:20px; }
+    .transport-name { font-size:34px; font-weight:900; }
+    .phonetic-guide { opacity:.8; font-style:italic; }
+
+    .feedback {
+      position:absolute; top:50%; left:50%;
+      transform:translate(-50%,-50%);
+      font-size:32px; font-weight:900;
+      padding:14px 26px; border-radius:16px;
+      opacity:0; transition:.25s var(--ease);
+      backdrop-filter:blur(6px); background:rgba(0,0,0,.3);
+    }
+    .feedback.show { opacity:1; transform:translate(-50%,-55%) scale(1.05); }
+
+    .stats {
+      text-align:center; font-weight:900;
+      background:rgba(255,255,255,.1);
+      border:1px solid var(--glass-border);
+      padding:12px 22px; border-radius:16px;
+      backdrop-filter:blur(8px);
+    }
+
+    .completion-message {
+      text-align:center; padding:20px;
+      background:rgba(255,255,255,.08);
+      border:1px solid var(--glass-border);
+      border-radius:18px;
+    }
+    .restart-button {
+      background:linear-gradient(135deg,#8d5cff,#ff8ff0);
+      color:#12061f; font-weight:900;
+      border:none; padding:12px 24px; border-radius:12px;
+      cursor:pointer; transition:.25s var(--ease);
+    }
+    .restart-button:hover { transform:scale(1.05); }
+  </style>
+</head>
+
+<body>
+  <div class="game-container">
+    <h1>Transport Vocabulary Game</h1>
+    <p class="instructions">Drag the card to the correct word!</p>
+
+    <div class="choice-labels">
+      <div id="leftLabel" class="choice-label">TIERRA</div>
+      <div id="rightLabel" class="choice-label">AIRE</div>
+    </div>
+
+    <div class="card-stack" id="cardStack"></div>
+    <div id="feedback" class="feedback"></div>
+    <div id="stats" class="stats">Score: 0 / 0</div>
+  </div>
+
+  <script>
+  /* ---------- Juego modo práctica ---------- */
+
+  // Lista de transportes simplificada
+  const transports = [
+    { name:"Car", spanish:"Coche", icon:"🚗", category:"land" },
+    { name:"Airplane", spanish:"Avión", icon:"✈️", category:"air" },
+    { name:"Train", spanish:"Tren", icon:"🚆", category:"land" },
+    { name:"Helicopter", spanish:"Helicóptero", icon:"🚁", category:"air" },
+    { name:"Bus", spanish:"Autobús", icon:"🚌", category:"land" },
+    { name:"Bicycle", spanish:"Bicicleta", icon:"🚲", category:"land" },
+    { name:"Hot Air Balloon", spanish:"Globo", icon:"🎈", category:"air" },
+  ];
+  const randomWords = ["Casa","Perro","Agua","Sol","Libro","Montaña","Mesa","Fuego"];
+
+  let currentIndex = 0, score = 0, totalAnswers = 0;
+  let startX = 0, currentX = 0, isDragging = false, currentCard = null;
+  let correctSide = null;
+
+  const $ = id => document.getElementById(id);
+
+  function showNextCard(){
+    if(currentIndex >= transports.length){ showCompletion(); return; }
+    const t = transports[currentIndex];
+    const left = $("leftLabel"), right = $("rightLabel");
+    const random = randomWords[Math.floor(Math.random()*randomWords.length)];
+    const leftIsCorrect = Math.random() < 0.5;
+    left.textContent = leftIsCorrect ? t.spanish : random;
+    right.textContent = leftIsCorrect ? random : t.spanish;
+    correctSide = leftIsCorrect ? 'left' : 'right';
+
+    const cardStack = $("cardStack");
+    const card = document.createElement("div");
+    card.className="transport-card";
+    card.innerHTML=`<div class="transport-icon">${t.icon}</div>
+                    <div class="transport-name">${t.name}</div>
+                    <div class="phonetic-guide">[Practice]</div>`;
+    cardStack.innerHTML="";
+    cardStack.appendChild(card);
+    currentCard = card;
+
+    card.addEventListener("pointerdown",startDrag);
+  }
+
+  function startDrag(e){
+    startX = e.clientX;
+    isDragging = true;
+    document.addEventListener("pointermove",onDrag);
+    document.addEventListener("pointerup",endDrag);
+  }
+
+  function onDrag(e){
+    if(!isDragging) return;
+    currentX = e.clientX;
+    const dx = currentX - startX;
+    currentCard.style.transform=`translateX(${dx}px) rotate(${dx*0.05}deg)`;
+    if(dx < -60){ $("leftLabel").classList.add("highlight"); $("rightLabel").classList.remove("highlight"); }
+    else if(dx > 60){ $("rightLabel").classList.add("highlight"); $("leftLabel").classList.remove("highlight"); }
+    else { $("leftLabel").classList.remove("highlight"); $("rightLabel").classList.remove("highlight"); }
+  }
+
+  function endDrag(e){
+    if(!isDragging) return;
+    isDragging = false;
+    document.removeEventListener("pointermove",onDrag);
+    document.removeEventListener("pointerup",endDrag);
+
+    const dx = currentX - startX;
+    $("leftLabel").classList.remove("highlight");
+    $("rightLabel").classList.remove("highlight");
+
+    if(Math.abs(dx)>100){
+      const userSide = dx<0 ? "left" : "right";
+      evaluate(userSide);
+      currentCard.style.transform=`translateX(${dx>0?800:-800}px) rotate(${dx*0.1}deg)`;
+      currentCard.style.opacity="0";
+      setTimeout(showNextCard,500);
+    } else {
+      currentCard.style.transform="translateX(0)";
+    }
+  }
+
+  function evaluate(side){
+    const isCorrect = side===correctSide;
+    if(isCorrect){ score++; showFeedback("✓ Correct!","#35e6b4"); }
+    else{ showFeedback("✗ Try Again!","#ff6b8a"); }
+    totalAnswers++; updateStats();
+    currentIndex++;
+  }
+
+  function showFeedback(text,color){
+    const fb=$("feedback");
+    fb.textContent=text;
+    fb.style.background=color;
+    fb.classList.add("show");
+    setTimeout(()=>fb.classList.remove("show"),800);
+  }
+
+  function updateStats(){ $("stats").textContent=`Score: ${score} / ${totalAnswers}`; }
+
+  function showCompletion(){
+    $("cardStack").innerHTML=`<div class="completion-message">
+      <div style="font-weight:900;font-size:24px;">🎉 Great job!</div>
+      <div>Final Score: ${score} / ${totalAnswers}</div>
+      <button class="restart-button" onclick="restartGame()">Play again</button>
+    </div>`;
+  }
+
+  function restartGame(){ currentIndex=0; score=0; totalAnswers=0; showNextCard(); updateStats(); }
+
+  // Inicio automático
+  window.addEventListener("load",()=>{
+    showNextCard(); updateStats();
+  });
+  </script>
+</body>
+</html>
